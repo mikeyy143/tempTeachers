@@ -65,6 +65,8 @@
     .captcha-row img { min-width: 180px; height: 54px; border: 1px solid #cfd4dc; object-fit: contain; }
     button.secondary { margin-top: 0; background: #475467; }
     button.secondary:hover { background: #344054; }
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-scroll table { min-width: 620px; }
     .summary {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
@@ -139,7 +141,19 @@
         .grid, .summary { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 520px) {
+        .container { margin: 18px auto; padding: 0 12px; }
+        h1 { font-size: 28px; }
+        .card { padding: 16px; margin-bottom: 14px; }
         .grid, .summary { grid-template-columns: 1fr; }
+        .captcha-row { align-items: stretch; flex-wrap: wrap; }
+        .captcha-row img { width: 180px; }
+        .captcha-row .secondary,
+        .card > button:not(.secondary) { flex: 1 1 100%; width: 100%; }
+        .about-card { padding: 20px 16px; border-radius: 18px; }
+        .about-card h2 { margin-bottom: 20px; font-size: 24px; }
+        .about-card h3 { margin-top: 24px; font-size: 20px; }
+        .about-card p, .about-card li { font-size: 15px; }
+        th, td { padding: 8px; }
     }
 </style>
 </head>
@@ -212,7 +226,8 @@
 
         <div class="card">
             <h2>Section-wise Score</h2>
-            <table class="section-summary">
+            <div class="table-scroll">
+                <table class="section-summary">
                 <thead>
                     <tr>
                         <th>Section</th>
@@ -223,7 +238,8 @@
                     </tr>
                 </thead>
                 <tbody id="sectionScores"></tbody>
-            </table>
+                </table>
+            </div>
         </div>
 
         <div class="card about-card">
@@ -240,7 +256,8 @@
 
             <h3>APTET Category-Wise Qualifying Cutoff Marks</h3>
             <p>To pass the Andhra Pradesh Teacher Eligibility Test, candidates must achieve the minimum qualifying percentage according to their category:</p>
-            <table>
+            <div class="table-scroll">
+                <table>
                 <thead>
                     <tr><th>Category</th><th>Qualifying Percentage</th><th>Minimum Marks Required (Out of 150)</th></tr>
                 </thead>
@@ -249,14 +266,16 @@
                     <tr><td><b>BC (Backward Classes)</b></td><td>50%</td><td>75 Marks</td></tr>
                     <tr><td><b>SC / ST / PH / Ex-Servicemen</b></td><td>40%</td><td>60 Marks</td></tr>
                 </tbody>
-            </table>
+                </table>
+            </div>
 
             
         </div>
 
         <div class="card">
             <h2>Question-wise Analysis</h2>
-            <table>
+            <div class="table-scroll">
+                <table>
                 <thead>
                     <tr>
                         <th>Section</th>
@@ -269,7 +288,8 @@
                     </tr>
                 </thead>
                 <tbody id="questionBody"></tbody>
-            </table>
+                </table>
+            </div>
         </div>
     </div>
 </div>
