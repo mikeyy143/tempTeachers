@@ -93,6 +93,13 @@
     .details dt { color: #667085; font-size: 12px; font-weight: 700; margin-top: 10px; text-transform: uppercase; }
     .details dd { margin: 3px 0 0; }
     .question-list { max-width: 330px; word-break: break-word; }
+    .about-card { border: 0; border-radius: 28px; padding: 28px 20px; }
+    .about-card h2 { color: #1769e8; margin: 0 0 30px; font-size: 28px; }
+    .about-card h3 { color: #334155; margin: 30px 0 12px; font-size: 22px; }
+    .about-card p, .about-card li { font-size: 17px; line-height: 1.5; }
+    .about-card li { margin: 5px 0; }
+    .about-card table { font-size: 16px; }
+    .about-card th { color: #111827; }
     @media (max-width: 800px) {
         .grid, .summary { grid-template-columns: 1fr 1fr; }
     }
@@ -132,6 +139,34 @@
                 <div class="stat"><div>Unattempted</div><div id="unattemptedQ" class="value unattempted">0</div></div>
                 <div class="stat"><div>Total Score</div><div id="score" class="value">0</div></div>
             </div>
+        </div>
+
+        <div class="card about-card">
+            <h2>About the APTET Key Score Calculator</h2>
+            <p>The <b>APTET (Andhra Pradesh Teacher Eligibility Test) Answer Key Score Calculator</b> is a dedicated utility for teacher aspirants across Andhra Pradesh. It automates the evaluation of official APTET response sheets released by the School Education Department, Government of Andhra Pradesh.</p>
+
+            <h3>How APTET Marks are Evaluated</h3>
+            <p>The APTET examination consists of <b>150 Multiple Choice Questions (MCQs)</b> carrying 1 mark each, with a total duration of 2.5 hours. Key highlights of the marking structure include:</p>
+            <ul>
+                <li><b>Positive Marks:</b> +1 mark for every correct answer.</li>
+                <li><b>Negative Marking:</b> <b>No negative marking</b> for wrong or unattempted answers.</li>
+                <li><b>Total Score:</b> Calculated as the sum of correct answers out of 150 marks.</li>
+            </ul>
+
+            <h3>APTET Category-Wise Qualifying Cutoff Marks</h3>
+            <p>To pass the Andhra Pradesh Teacher Eligibility Test, candidates must achieve the minimum qualifying percentage according to their category:</p>
+            <table>
+                <thead>
+                    <tr><th>Category</th><th>Qualifying Percentage</th><th>Minimum Marks Required (Out of 150)</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><b>OC / General</b></td><td>60%</td><td>90 Marks</td></tr>
+                    <tr><td><b>BC (Backward Classes)</b></td><td>50%</td><td>75 Marks</td></tr>
+                    <tr><td><b>SC / ST / PH / Ex-Servicemen</b></td><td>40%</td><td>60 Marks</td></tr>
+                </tbody>
+            </table>
+
+            
         </div>
 
         <div class="card">
