@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Score Calculator</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f5f7fb;
+        color: #172033;
+    }
+    .container {
+        max-width: 1100px;
+        margin: 40px auto;
+        padding: 0 18px;
+    }
+    h1 { margin-bottom: 8px; }
+    .muted { color: #667085; }
+    .card {
+        background: white;
+        border: 1px solid #e4e7ec;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 8px rgba(16,24,40,.05);
+    }
+    label { display:block; font-weight: 600; margin: 12px 0 6px; }
+    input {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid #cfd4dc;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+    button {
+        margin-top: 16px;
+        border: 0;
+        border-radius: 8px;
+        padding: 11px 18px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        background: #175cd3;
+        color: white;
+    }
+    button:hover { background: #124aa8; }
+    .summary {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 12px;
+    }
+    .stat {
+        background: #f8fafc;
+        border: 1px solid #eaecf0;
+        border-radius: 10px;
+        padding: 15px;
+    }
+    .stat .value { font-size: 25px; font-weight: 700; margin-top: 4px; }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+    }
+    th, td {
+        border-bottom: 1px solid #eaecf0;
+        padding: 10px;
+        text-align: left;
+    }
+    th { background: #f9fafb; }
+    .correct { color: #067647; font-weight: 700; }
+    .wrong { color: #b42318; font-weight: 700; }
+    .unattempted { color: #667085; font-weight: 700; }
+    .error {
+        color: #b42318;
+        background: #fef3f2;
+        border: 1px solid #fecdca;
+        padding: 12px;
+        border-radius: 8px;
+        margin-top: 14px;
+        display: none;
+        white-space: pre-wrap;
+    }
+    .small { font-size: 13px; }
+    .details { margin: 0; }
+    .details dt { color: #667085; font-size: 12px; font-weight: 700; margin-top: 10px; text-transform: uppercase; }
+    .details dd { margin: 3px 0 0; }
+    .question-list { max-width: 330px; word-break: break-word; }
+    @media (max-width: 800px) {
+        .grid, .summary { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 520px) {
+        .grid, .summary { grid-template-columns: 1fr; }
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1> Score Calculator</h1>
+    
+
+    <div class="card">
+        <label for="url">Result HTML URL</label>
+        <input id="url" type="url"
+               placeholder="https://cdn3.digialm.com/.../E1.html">
+
+        <p class="muted small">Marking scheme: <b>+1</b> correct, <b>0</b> wrong, <b>0</b> unattempted.</p>
+
+        <button onclick="calculateScore()">Calculate Score</button>
+        <div id="error" class="error"></div>
+    </div>
+
+    <div id="results" style="display:none">
+        <div id="candidateCard" class="card" style="display:none">
+            <h2>Result Details</h2>
+            <dl id="candidateDetails" class="details"></dl>
+        </div>
+        <div class="card">
+            <h2>Overall Score</h2>
+            <div class="summary">
+                <div class="stat"><div>Total Questions</div><div id="totalQ" class="value">0</div></div>
+                <div class="stat"><div>Maximum Marks</div><div id="maxScore" class="value">0</div></div>
+                <div class="stat"><div>Correct</div><div id="correctQ" class="value correct">0</div></div>
+                <div class="stat"><div>Wrong</div><div id="wrongQ" class="value wrong">0</div></div>
+                <div class="stat"><div>Unattempted</div><div id="unattemptedQ" class="value unattempted">0</div></div>
+                <div class="stat"><div>Total Score</div><div id="score" class="value">0</div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Question-wise Analysis</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Section</th>
+                        <th>Q.No</th>
+                        <th>Question ID</th>
+                        <th>Correct Answer</th>
+                        <th>Chosen Option</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody id="questionBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function cleanText(el) {
+    return el ? el.textContent.replace(/\s+/g, " ").trim() : "";
+}
+
+function normalizeAnswer(value) {
+    if (!value) return "";
+    value = value.replace(/\s+/g, " ").trim();
+
+    // Common Digialm format: "1. 2" or "2. 2".
+    // Prefer the final numeric option in the text.
+    const nums = value.match(/\d+/g);
+    if (nums && nums.length) return nums[nums.length - 1];
+
+    // Fall back to the raw text for non-numeric answers.
+    return value.toLowerCase();
+}
+
+function getRowValue(table, label) {
+    if (!table) return "";
+    const rows = table.querySelectorAll("tr");
+    for (const row of rows) {
+        const cells = row.querySelectorAll("td,th");
+        if (cells.length >= 2) {
+            const first = cleanText(cells[0]).replace(/\s+/g, " ").toLowerCase();
+            if (first.startsWith(label.toLowerCase())) {
+                return cleanText(cells[1]);
+            }
+        }
+    }
+    return "";
+}
+
+function findQuestionId(questionPanel) {
+    const menu = questionPanel.querySelector("table.menu-tbl");
+    const text = getRowValue(menu, "Question ID");
+    return text || "";
+}
+
+function findChosenOption(questionPanel) {
+    const menu = questionPanel.querySelector("table.menu-tbl");
+    let value = getRowValue(menu, "Chosen Option");
+    if (!value) value = cleanText(questionPanel.querySelector("td.wrngAns"));
+    return /^(--|not answered|not attempted|n\/a)$/i.test(value) ? "" : value;
+}
+
+function findCorrectAnswer(questionPanel) {
+    // In the Digialm structure shown in the supplied reference,
+    // the left question table contains an "Ans" row and the answer is
+    // inside the following td.rightAns.
+    const rightAns = questionPanel.querySelector("td.rightAns");
+    if (rightAns) {
+        const text = cleanText(rightAns);
+        if (text) return text;
+    }
+
+    // Fallback: find a row whose first cell is "Ans".
+    const tables = questionPanel.querySelectorAll("table");
+    for (const table of tables) {
+        const rows = table.querySelectorAll("tr");
+        for (const row of rows) {
+            const cells = row.querySelectorAll("td,th");
+            if (cells.length >= 2 && cleanText(cells[0]).toLowerCase() === "ans") {
+                return cleanText(cells[1]);
+            }
+        }
+    }
+    return "";
+}
+
+function findQuestionNumber(questionPanel, fallback) {
+    // Usually the first non-empty row in questionRowTbl contains question text,
+    // so Q number is not always stored as a simple field. Use DOM order as a
+    // reliable fallback within each section.
+    const heading = questionPanel.querySelector(".question");
+    if (heading) {
+        const m = cleanText(heading).match(/Q\.?\s*(\d+)/i);
+        if (m) return m[1];
+    }
+    return String(fallback);
+}
+
+function parseDocument(doc) {
+    const sections = [];
+    const sectionLabels = Array.from(doc.querySelectorAll(".section-lbl"));
+
+    // If section labels exist, each section container is the parent
+    // .section-ctnrr and its question-pnl children belong to that section.
+    for (const label of sectionLabels) {
+        const container = label.closest(".section-ctnrr, .section-ctnr");
+        if (!container) continue;
+
+        const boldLabel = label.querySelector("span.bold");
+        const labelSpans = label.querySelectorAll("span");
+        let sectionName = cleanText(boldLabel || (labelSpans.length ? labelSpans[labelSpans.length - 1] : label));
+        sectionName = sectionName.replace(/^Section\s*:\s*/i, "").trim();
+        if (!sectionName) sectionName = "Unnamed Section";
+
+        const panels = Array.from(container.querySelectorAll(".question-pnl"));
+        const questions = panels.map((panel, index) => ({
+            section: sectionName,
+            number: findQuestionNumber(panel, index + 1),
+            id: findQuestionId(panel),
+            correct: findCorrectAnswer(panel),
+            chosen: findChosenOption(panel)
+        }));
+
+        if (questions.length) sections.push({ name: sectionName, questions });
+    }
+
+    // Fallback for slightly different Digialm templates.
+    if (!sections.length) {
+        const panels = Array.from(doc.querySelectorAll(".question-pnl"));
+        if (panels.length) {
+            sections.push({
+                name: "All Questions",
+                questions: panels.map((panel, index) => ({
+                    section: "All Questions",
+                    number: findQuestionNumber(panel, index + 1),
+                    id: findQuestionId(panel),
+                    correct: findCorrectAnswer(panel),
+                    chosen: findChosenOption(panel)
+                }))
+            });
+        }
+    }
+
+    return sections;
+}
+
+function extractResultDetails(doc) {
+    const panel = doc.querySelector(".main-info-pnl");
+    if (!panel) return [];
+    const details = [];
+    for (const row of panel.querySelectorAll("tr")) {
+        const cells = row.querySelectorAll("td, th");
+        if (cells.length >= 2) {
+            const label = cleanText(cells[0]);
+            const value = cleanText(cells[1]);
+            if (label && value) details.push({ label, value });
+        }
+    }
+    return details;
+}
+
+function classify(q) {
+    const correct = normalizeAnswer(q.correct);
+    const chosen = normalizeAnswer(q.chosen);
+
+    if (!chosen || chosen === "--") return "unattempted";
+    if (correct && chosen === correct) return "correct";
+
+    // If an answer exists but couldn't be parsed, don't silently call it wrong.
+    if (!correct) return "unknown";
+    return "wrong";
+}
+
+async function calculateScore() {
+    const error = document.getElementById("error");
+    error.style.display = "none";
+    document.getElementById("results").style.display = "none";
+
+    const url = document.getElementById("url").value.trim();
+    if (!url) {
+        showError("Please enter the Digialm HTML URL.");
+        return;
+    }
+
+    const correctMarks = 1;
+    const wrongMarks = 0;
+    const unattemptedMarks = 0;
+
+    try {
+        const response = await fetch("/api/digialm-result?url=" + encodeURIComponent(url), {
+            method: "GET",
+            credentials: "same-origin"
+        });
+
+        if (!response.ok) {
+            throw new Error("Server returned HTTP " + response.status);
+        }
+
+        const html = await response.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const sections = parseDocument(doc);
+        const resultDetails = extractResultDetails(doc);
+
+        if (!sections.length) {
+            throw new Error(
+                "No Digialm question sections were found. " +
+                "The page may use a different template or the HTML was not fetched."
+            );
+        }
+
+        renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks);
+    } catch (err) {
+        showError(
+            "Could not read the URL.\n\n" +
+            err.message +
+            "\n\n" +
+                "Make sure the Node server is running, and use a URL hosted on a Digialm domain."
+        );
+    }
+}
+
+function renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks) {
+    let total = 0, correct = 0, wrong = 0, unattempted = 0, unknown = 0, score = 0;
+
+    const questionBody = document.getElementById("questionBody");
+    questionBody.innerHTML = "";
+    const detailList = document.getElementById("candidateDetails");
+    detailList.innerHTML = resultDetails.map(({ label, value }) =>
+        `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
+    document.getElementById("candidateCard").style.display = resultDetails.length ? "block" : "none";
+
+    for (const section of sections) {
+        for (const q of section.questions) {
+            const type = classify(q);
+
+            total++;
+            if (type === "correct") {
+                correct++; score += correctMarks;
+            } else if (type === "wrong") {
+                wrong++; score += wrongMarks;
+            } else if (type === "unattempted") {
+                unattempted++; score += unattemptedMarks;
+            } else {
+                unknown++;
+            }
+
+            const tr = document.createElement("tr");
+            const statusText = type === "correct" ? "Correct" :
+                               type === "wrong" ? "Wrong" :
+                               type === "unattempted" ? "Unattempted" :
+                               "Unknown";
+
+            tr.innerHTML = `
+                <td>${escapeHtml(section.name)}</td>
+                <td>${escapeHtml(q.number)}</td>
+                <td>${escapeHtml(q.id || "-")}</td>
+                <td>${escapeHtml(q.correct || "-")}</td>
+                <td>${escapeHtml(q.chosen || "-")}</td>
+                <td class="${type}">${statusText}</td>
+                <td>${type === "correct" ? formatNumber(correctMarks) :
+                      type === "wrong" ? formatNumber(wrongMarks) :
+                      type === "unattempted" ? formatNumber(unattemptedMarks) : "-"}</td>
+            `;
+            questionBody.appendChild(tr);
+        }
+
+    }
+
+    document.getElementById("totalQ").textContent = total;
+    document.getElementById("maxScore").textContent = formatNumber(total * correctMarks);
+    document.getElementById("correctQ").textContent = correct;
+    document.getElementById("wrongQ").textContent = wrong;
+    document.getElementById("unattemptedQ").textContent = unattempted;
+    document.getElementById("score").textContent = formatNumber(score);
+
+    if (unknown) {
+        const note = document.createElement("div");
+        note.className = "muted small";
+        note.style.marginTop = "12px";
+        note.textContent =
+            unknown + " question(s) could not be classified because the correct answer was not found in the HTML.";
+        questionBody.parentElement.parentElement.appendChild(note);
+    }
+
+    document.getElementById("results").style.display = "block";
+}
+
+function formatNumber(n) {
+    return Number(n).toFixed(2).replace(/\.00$/, "");
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function showError(message) {
+    const el = document.getElementById("error");
+    el.textContent = message;
+    el.style.display = "block";
+}
+</script>
+</body>
+</html>
