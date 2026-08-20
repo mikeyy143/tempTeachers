@@ -107,10 +107,15 @@ function extractToken(authData) {
 }
 
 function extractAnswerSheetUrl(answerData) {
-  const records = Array.isArray(answerData.data) ? answerData.data : [];
-  const record = records.find((item) => item && item.qp_html_path);
-  if (!record) throw new Error("No answer-sheet URL was returned for this account.");
-  return record.qp_html_path;
+  return extractAnswerSheetRecords(answerData)[0].qp_html_path;
+}
+
+function extractAnswerSheetRecords(answerData) {
+  const records = Array.isArray(answerData.data)
+    ? answerData.data.filter((item) => item && item.qp_html_path)
+    : [];
+  if (!records.length) throw new Error("No answer-sheet URL was returned for this account.");
+  return records;
 }
 
 async function generateCaptcha() {
@@ -146,9 +151,18 @@ async function fetchAuthenticatedDigialmHtml({ username, password, captcha, capt
     method: "GET",
     headers: { ...apiHeaders(authCookie), authorization: token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}` }
   });
-  const resultUrl = extractAnswerSheetUrl(answerResult.data);
-  if (!isAllowedDigialmUrl(resultUrl)) throw new Error("The returned answer-sheet URL is not a valid Digialm URL.");
-  return fetchDigialmHtml(resultUrl);
+  const records = extractAnswerSheetRecords(answerResult.data);
+  return Promise.all(records.map(async (record, index) => {
+    if (!isAllowedDigialmUrl(record.qp_html_path)) {
+      throw new Error(`The returned answer-sheet URL for paper ${index + 1} is not valid.`);
+    }
+    return {
+      html: await fetchDigialmHtml(record.qp_html_path),
+      examId: record.exam_id || "",
+      paperId: record.paper_id || "",
+      subjectName: record.subject_name || `Paper ${index + 1}`
+    };
+  }));
 }
 
 function sendJson(response, statusCode, payload) {
@@ -168,9 +182,8 @@ async function requestHandler(request, response) {
 
   if (request.method === "POST" && requestUrl.pathname === "/api/digialm-result") {
     try {
-      const html = await fetchAuthenticatedDigialmHtml(await readJsonBody(request));
-      response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
-      return response.end(html);
+      const papers = await fetchAuthenticatedDigialmHtml(await readJsonBody(request));
+      return sendJson(response, 200, { papers });
     } catch (error) {
       return sendJson(response, 502, { error: error.message || "Could not fetch the authenticated Digialm result." });
     }
@@ -222,4 +235,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { isAllowedDigialmUrl, fetchDigialmHtml, extractToken, extractAnswerSheetUrl, requestHandler };
+module.exports = { isAllowedDigialmUrl, fetchDigialmHtml, extractToken, extractAnswerSheetUrl, extractAnswerSheetRecords, requestHandler };

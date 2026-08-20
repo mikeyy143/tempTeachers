@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { isAllowedDigialmUrl, extractToken, extractAnswerSheetUrl } = require("./server");
+const { isAllowedDigialmUrl, extractToken, extractAnswerSheetUrl, extractAnswerSheetRecords } = require("./server");
 
 test("allows HTTPS Digialm hosts only", () => {
   assert.equal(isAllowedDigialmUrl("https://cdn3.digialm.com/result/E1.html"), true);
@@ -23,4 +23,14 @@ test("extracts the first answer-sheet URL", () => {
     "https://cdn3.digialm.com/result.html"
   );
   assert.throws(() => extractAnswerSheetUrl({ data: [] }), /No answer-sheet URL/);
+});
+
+test("preserves every paper answer-sheet record", () => {
+  const records = extractAnswerSheetRecords({
+    data: [
+      { paper_id: "paper_1_a", qp_html_path: "https://cdn3.digialm.com/paper-1.html" },
+      { paper_id: "paper_2_a", qp_html_path: "https://cdn3.digialm.com/paper-2.html" }
+    ]
+  });
+  assert.deepEqual(records.map((record) => record.paper_id), ["paper_1_a", "paper_2_a"]);
 });

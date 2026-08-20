@@ -208,6 +208,10 @@
     </div>
 
     <div id="results" style="display:none">
+        <div id="paperSelectorCard" class="card" style="display:none">
+            <label for="paperSelect">Choose paper</label>
+            <select id="paperSelect" onchange="showPaper(this.value)"></select>
+        </div>
         <div id="candidateCard" class="card" style="display:none">
             <h2>Result Details</h2>
             <dl id="candidateDetails" class="details"></dl>
@@ -488,19 +492,14 @@ async function calculateScore() {
             throw new Error("Server returned HTTP " + response.status);
         }
 
-        const html = await response.text();
-        const doc = new DOMParser().parseFromString(html, "text/html");
-        const sections = parseDocument(doc);
-        const resultDetails = extractResultDetails(doc);
-
-        if (!sections.length) {
-            throw new Error(
-                "No Digialm question sections were found. " +
-                "The page may use a different template or the HTML was not fetched."
-            );
+        const payload = await response.json();
+        if (!Array.isArray(payload.papers) || !payload.papers.length) {
+            throw new Error("No answer-sheet papers were returned.");
         }
-
-        renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks, qualifyingMarks);
+        loadedPapers = payload.papers;
+        scoreSettings = { correctMarks, wrongMarks, unattemptedMarks, qualifyingMarks };
+        populatePaperSelector();
+        showPaper(0);
     } catch (err) {
         showError(
             "Could not load your answer sheet.\n\n" +
@@ -516,6 +515,37 @@ async function calculateScore() {
 
 let captchaId = "";
 let captchaCookie = "";
+let loadedPapers = [];
+let scoreSettings = null;
+
+function populatePaperSelector() {
+    const selectorCard = document.getElementById("paperSelectorCard");
+    const selector = document.getElementById("paperSelect");
+    selector.innerHTML = loadedPapers.map((paper, index) => {
+        const label = paper.subjectName || `Paper ${index + 1}`;
+        return `<option value="${index}">Paper ${index + 1}: ${escapeHtml(label)}</option>`;
+    }).join("");
+    selectorCard.style.display = loadedPapers.length > 1 ? "block" : "none";
+}
+
+function showPaper(index) {
+    const paper = loadedPapers[Number(index)];
+    if (!paper || !scoreSettings) return;
+    const doc = new DOMParser().parseFromString(paper.html, "text/html");
+    const sections = parseDocument(doc);
+    if (!sections.length) {
+        showError("No question sections were found for the selected paper.");
+        return;
+    }
+    renderResults(
+        sections,
+        extractResultDetails(doc),
+        scoreSettings.correctMarks,
+        scoreSettings.wrongMarks,
+        scoreSettings.unattemptedMarks,
+        scoreSettings.qualifyingMarks
+    );
+}
 
 function resetCalculationForm() {
     document.getElementById("username").value = "";
