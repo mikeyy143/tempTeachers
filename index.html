@@ -35,6 +35,15 @@
         border-radius: 8px;
         font-size: 14px;
     }
+    select {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid #cfd4dc;
+        border-radius: 8px;
+        font-size: 14px;
+        background: white;
+        color: #172033;
+    }
     .grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -54,7 +63,7 @@
     button:hover { background: #124aa8; }
     .summary {
         display: grid;
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         gap: 12px;
     }
     .stat {
@@ -64,6 +73,9 @@
         padding: 15px;
     }
     .stat .value { font-size: 25px; font-weight: 700; margin-top: 4px; }
+    .section-summary { margin-top: 0; }
+    .section-summary th, .section-summary td { vertical-align: top; }
+    .section-summary .section-result { color: #175cd3; font-weight: 700; }
     table {
         width: 100%;
         border-collapse: collapse;
@@ -78,6 +90,8 @@
     .correct { color: #067647; font-weight: 700; }
     .wrong { color: #b42318; font-weight: 700; }
     .unattempted { color: #667085; font-weight: 700; }
+    .pass { color: #067647; font-weight: 700; }
+    .fail { color: #b42318; font-weight: 700; }
     .error {
         color: #b42318;
         background: #fef3f2;
@@ -100,6 +114,23 @@
     .about-card li { margin: 5px 0; }
     .about-card table { font-size: 16px; }
     .about-card th { color: #111827; }
+    .how-to-card {
+        padding: 20px 24px;
+        border-radius: 12px;
+    }
+    .how-to-card h2 {
+        color: #334155;
+        margin: 0 0 12px;
+        font-size: 22px;
+    }
+    .how-to-card ol {
+        margin: 0;
+        padding-left: 24px;
+    }
+    .how-to-card li {
+        margin: 6px 0;
+        line-height: 1.45;
+    }
     @media (max-width: 800px) {
         .grid, .summary { grid-template-columns: 1fr 1fr; }
     }
@@ -118,10 +149,28 @@
         <input id="url" type="url"
                placeholder="https://cdn3.digialm.com/.../E1.html">
 
+        <label for="category">Category</label>
+        <select id="category">
+            <option value="">Select your category</option>
+            <option value="general">OC / General (90 marks)</option>
+            <option value="bc">BC (75 marks)</option>
+            <option value="reserved">SC / ST / PH / Ex-Servicemen (60 marks)</option>
+        </select>
+
         <p class="muted small">Marking scheme: <b>+1</b> correct, <b>0</b> wrong, <b>0</b> unattempted.</p>
 
         <button onclick="calculateScore()">Calculate Score</button>
         <div id="error" class="error"></div>
+    </div>
+
+    <div id="howToUse" class="card how-to-card">
+        <h2>How to use this calculator?</h2>
+        <ol>
+            <li>Copy your official response sheet URL from the APTET portal.</li>
+            <li>Paste the URL into the input field above.</li>
+            <li>Click <b>Calculate Score</b>.</li>
+            <li>Your attempted, unattempted, subject-wise, and total scores will be generated instantly.</li>
+        </ol>
     </div>
 
     <div id="results" style="display:none">
@@ -133,12 +182,28 @@
             <h2>Overall Score</h2>
             <div class="summary">
                 <div class="stat"><div>Total Questions</div><div id="totalQ" class="value">0</div></div>
-                <div class="stat"><div>Maximum Marks</div><div id="maxScore" class="value">0</div></div>
                 <div class="stat"><div>Correct</div><div id="correctQ" class="value correct">0</div></div>
                 <div class="stat"><div>Wrong</div><div id="wrongQ" class="value wrong">0</div></div>
                 <div class="stat"><div>Unattempted</div><div id="unattemptedQ" class="value unattempted">0</div></div>
                 <div class="stat"><div>Total Score</div><div id="score" class="value">0</div></div>
+                <div class="stat"><div>Result</div><div id="resultStatus" class="value">-</div></div>
             </div>
+        </div>
+
+        <div class="card">
+            <h2>Section-wise Score</h2>
+            <table class="section-summary">
+                <thead>
+                    <tr>
+                        <th>Section</th>
+                        <th>Right (Positive) Marks</th>
+                        <th>Wrong Answers</th>
+                        <th>Net Section Result</th>
+                        <th>Incorrect Question IDs</th>
+                    </tr>
+                </thead>
+                <tbody id="sectionScores"></tbody>
+            </table>
         </div>
 
         <div class="card about-card">
@@ -260,12 +325,9 @@ function findCorrectAnswer(questionPanel) {
 }
 
 function findQuestionNumber(questionPanel, fallback) {
-    // Usually the first non-empty row in questionRowTbl contains question text,
-    // so Q number is not always stored as a simple field. Use DOM order as a
-    // reliable fallback within each section.
-    const heading = questionPanel.querySelector(".question");
-    if (heading) {
-        const m = cleanText(heading).match(/Q\.?\s*(\d+)/i);
+    const questionLabel = questionPanel.querySelector(".questionRowTbl td.bold");
+    if (questionLabel) {
+        const m = cleanText(questionLabel).match(/Q\.?\s*(\d+)/i);
         if (m) return m[1];
     }
     return String(fallback);
@@ -273,13 +335,12 @@ function findQuestionNumber(questionPanel, fallback) {
 
 function parseDocument(doc) {
     const sections = [];
-    const sectionLabels = Array.from(doc.querySelectorAll(".section-lbl"));
+    const containers = Array.from(doc.querySelectorAll(".section-cntnr"));
 
-    // If section labels exist, each section container is the parent
-    // .section-ctnrr and its question-pnl children belong to that section.
-    for (const label of sectionLabels) {
-        const container = label.closest(".section-ctnrr, .section-ctnr");
-        if (!container) continue;
+    // Read each section container directly so labels stay paired with their questions.
+    for (const container of containers) {
+        const label = container.querySelector(":scope > .section-lbl") || container.querySelector(".section-lbl");
+        if (!label) continue;
 
         const boldLabel = label.querySelector("span.bold");
         const labelSpans = label.querySelectorAll("span");
@@ -348,6 +409,7 @@ function classify(q) {
 
 async function calculateScore() {
     const error = document.getElementById("error");
+    document.getElementById("howToUse").style.display = "none";
     error.style.display = "none";
     document.getElementById("results").style.display = "none";
 
@@ -357,9 +419,20 @@ async function calculateScore() {
         return;
     }
 
+    const category = document.getElementById("category").value;
+    if (!category) {
+        showError("Please select your category.");
+        return;
+    }
+
     const correctMarks = 1;
     const wrongMarks = 0;
     const unattemptedMarks = 0;
+    const qualifyingMarks = {
+        general: 90,
+        bc: 75,
+        reserved: 60
+    }[category];
 
     try {
         const response = await fetch("/api/digialm-result?url=" + encodeURIComponent(url), {
@@ -383,7 +456,7 @@ async function calculateScore() {
             );
         }
 
-        renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks);
+        renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks, qualifyingMarks);
     } catch (err) {
         showError(
             "Could not read the URL.\n\n" +
@@ -394,25 +467,34 @@ async function calculateScore() {
     }
 }
 
-function renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks) {
+function renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks, qualifyingMarks) {
     let total = 0, correct = 0, wrong = 0, unattempted = 0, unknown = 0, score = 0;
 
     const questionBody = document.getElementById("questionBody");
     questionBody.innerHTML = "";
+    const sectionScores = document.getElementById("sectionScores");
+    sectionScores.innerHTML = "";
     const detailList = document.getElementById("candidateDetails");
     detailList.innerHTML = resultDetails.map(({ label, value }) =>
         `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
     document.getElementById("candidateCard").style.display = resultDetails.length ? "block" : "none";
 
     for (const section of sections) {
+        let sectionTotal = 0;
+        let sectionScore = 0;
+        let sectionWrong = 0;
+        const incorrectQuestionNumbers = [];
+
         for (const q of section.questions) {
             const type = classify(q);
 
             total++;
+            sectionTotal++;
             if (type === "correct") {
-                correct++; score += correctMarks;
+                correct++; score += correctMarks; sectionScore += correctMarks;
             } else if (type === "wrong") {
-                wrong++; score += wrongMarks;
+                wrong++; score += wrongMarks; sectionWrong++;
+                if (q.number) incorrectQuestionNumbers.push(q.number);
             } else if (type === "unattempted") {
                 unattempted++; score += unattemptedMarks;
             } else {
@@ -439,14 +521,26 @@ function renderResults(sections, resultDetails, correctMarks, wrongMarks, unatte
             questionBody.appendChild(tr);
         }
 
+        const sectionRow = document.createElement("tr");
+        sectionRow.innerHTML =
+            `<td><b>${escapeHtml(section.name)}</b></td>` +
+            `<td class="correct">+${formatNumber(sectionScore)}</td>` +
+            `<td class="wrong">${sectionWrong}</td>` +
+            `<td class="section-result">${formatNumber(sectionScore)}</td>` +
+            `<td>${escapeHtml(incorrectQuestionNumbers.join(", ") || "-")}</td>`;
+        sectionScores.appendChild(sectionRow);
+
     }
 
     document.getElementById("totalQ").textContent = total;
-    document.getElementById("maxScore").textContent = formatNumber(total * correctMarks);
     document.getElementById("correctQ").textContent = correct;
     document.getElementById("wrongQ").textContent = wrong;
     document.getElementById("unattemptedQ").textContent = unattempted;
     document.getElementById("score").textContent = formatNumber(score);
+    const resultStatus = document.getElementById("resultStatus");
+    const passed = score >= qualifyingMarks;
+    resultStatus.textContent = passed ? "Pass" : "Fail";
+    resultStatus.className = "value " + (passed ? "pass" : "fail");
 
     if (unknown) {
         const note = document.createElement("div");
