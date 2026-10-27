@@ -46,7 +46,7 @@
     }
     .grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         gap: 12px;
     }
     button {
@@ -61,10 +61,6 @@
         color: white;
     }
     button:hover { background: #124aa8; }
-    .captcha-row { display: flex; align-items: end; gap: 12px; margin-top: 12px; }
-    .captcha-row img { min-width: 180px; height: 54px; border: 1px solid #cfd4dc; object-fit: contain; }
-    button.secondary { margin-top: 0; background: #475467; }
-    button.secondary:hover { background: #344054; }
     .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .table-scroll table { min-width: 620px; }
     .summary {
@@ -145,9 +141,6 @@
         h1 { font-size: 28px; }
         .card { padding: 16px; margin-bottom: 14px; }
         .grid, .summary { grid-template-columns: 1fr; }
-        .captcha-row { align-items: stretch; flex-wrap: wrap; }
-        .captcha-row img { width: 180px; }
-        .captcha-row .secondary,
         .card > button:not(.secondary) { flex: 1 1 100%; width: 100%; }
         .about-card { padding: 20px 16px; border-radius: 18px; }
         .about-card h2 { margin-bottom: 20px; font-size: 24px; }
@@ -172,15 +165,6 @@
                 <label for="password">Password</label>
                 <input id="password" type="password" autocomplete="current-password">
             </div>
-            <div>
-                <label for="captcha">CAPTCHA</label>
-                <input id="captcha" autocomplete="off">
-            </div>
-        </div>
-
-        <div class="captcha-row">
-            <img id="captchaImage" alt="CAPTCHA" hidden>
-            <button type="button" class="secondary" onclick="loadCaptcha()">New CAPTCHA</button>
         </div>
 
         <label for="category">Category</label>
@@ -193,15 +177,15 @@
 
         <p class="muted small">Marking scheme: <b>+1</b> correct, <b>0</b> wrong, <b>0</b> unattempted.</p>
 
-        <button onclick="calculateScore()">Calculate Score</button>
-        <div id="error" class="error"></div>
+        <button id="calcBtn" onclick="calculateScore()">Calculate Score</button>
+        <div id="error" class="error" role="alert" aria-live="polite"></div>
     </div>
 
     <div id="howToUse" class="card how-to-card">
         <h2>How to use this calculator?</h2>
         <ol>
             <li>Enter your APTET username and password.</li>
-            <li>Type the CAPTCHA shown above and choose your category.</li>
+            <li>Choose your category. The calculator will solve the CAPTCHA automatically.</li>
             <li>Click <b>Calculate Score</b>.</li>
             <li>Your attempted, unattempted, subject-wise, and total scores will be generated instantly.</li>
         </ol>
@@ -459,9 +443,8 @@ async function calculateScore() {
 
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
-    const captcha = document.getElementById("captcha").value.trim();
-    if (!username || !password || !captcha || !captchaId) {
-        showError("Enter your username, password, and the CAPTCHA.");
+    if (!username || !password) {
+        showError("Enter your username and password.");
         return;
     }
 
@@ -480,19 +463,21 @@ async function calculateScore() {
         reserved: 60
     }[category];
 
+    const calcBtn = document.getElementById("calcBtn");
+    calcBtn.disabled = true;
+    calcBtn.textContent = "Calculating...";
     try {
-        const response = await fetch("/api/digialm-result", {
+        const response = await fetch("/api/digialm-result-auto", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ username, password, captcha, captchaId, cookie: captchaCookie }),
+            body: JSON.stringify({ username, password }),
             credentials: "same-origin"
         });
 
-        if (!response.ok) {
-            throw new Error("Server returned HTTP " + response.status);
-        }
-
         const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "Server returned HTTP " + response.status);
+        }
         if (!Array.isArray(payload.papers) || !payload.papers.length) {
             throw new Error("No answer-sheet papers were returned.");
         }
@@ -509,12 +494,11 @@ async function calculateScore() {
         );
     } finally {
         resetCalculationForm();
-        await loadCaptcha();
+        calcBtn.disabled = false;
+        calcBtn.textContent = "Calculate Score";
     }
 }
 
-let captchaId = "";
-let captchaCookie = "";
 let loadedPapers = [];
 let scoreSettings = null;
 
@@ -550,29 +534,8 @@ function showPaper(index) {
 function resetCalculationForm() {
     document.getElementById("username").value = "";
     document.getElementById("password").value = "";
-    document.getElementById("captcha").value = "";
     document.getElementById("category").value = "";
-    captchaId = "";
-    captchaCookie = "";
 }
-
-async function loadCaptcha() {
-    const image = document.getElementById("captchaImage");
-    try {
-        const response = await fetch("/api/captcha", { credentials: "same-origin" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Could not generate CAPTCHA.");
-        captchaId = data.captchaId;
-        captchaCookie = data.cookie || "";
-        image.src = data.captcha;
-        image.hidden = false;
-        document.getElementById("captcha").value = "";
-    } catch (err) {
-        showError(err.message);
-    }
-}
-
-loadCaptcha();
 
 function renderResults(sections, resultDetails, correctMarks, wrongMarks, unattemptedMarks, qualifyingMarks) {
     let total = 0, correct = 0, wrong = 0, unattempted = 0, unknown = 0, score = 0;

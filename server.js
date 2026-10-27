@@ -3,6 +3,8 @@
 const http = require("node:http");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const sharp = require("sharp");
+const { createWorker } = require("tesseract.js");
 
 const PORT = Number(process.env.PORT) || 3001;
 const MAX_HTML_BYTES = 5 * 1024 * 1024;
@@ -13,6 +15,83 @@ const API_ORIGIN = "https://tet2dsc.apcfss.in";
 const CAPTCHA_URL = `${API_BASE_URL}/apdscapi/dsc-public/generate-captcha`;
 const AUTH_URL = `${API_BASE_URL}/apdscapi/auth/candidate-authenticate`;
 const ANSWER_SHEET_URL = `${API_BASE_URL}/apdscreadapi/tet-ans-sheet`;
+
+const CAPTCHA_LEN = Number(process.env.CAPTCHA_LEN) || 0; // 0 = any length
+const MAX_CAPTCHA_ATTEMPTS = 6;
+const MIN_AGREEMENT = 0.5;   // fraction of variants that must agree
+const MIN_CONFIDENCE = 60;   // tesseract confidence of the winning read
+const THRESHOLDS = [100, 120, 140, 160, 180];
+
+/* ---------------- OCR (tesseract.js + sharp) ---------------- */
+
+let workerPromise = null;
+let ocrQueue = Promise.resolve();
+
+function getWorker() {
+  if (!workerPromise) {
+    workerPromise = (async () => {
+      const worker = await createWorker("eng");
+      await worker.setParameters({
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        tessedit_pageseg_mode: "7"
+      });
+      return worker;
+    })();
+  }
+  return workerPromise;
+}
+
+async function buildVariants(buffer) {
+  const meta = await sharp(buffer).metadata();
+  const width = (meta.width || 150) * 3;
+  const base = () =>
+    sharp(buffer)
+      .flatten({ background: "#ffffff" })
+      .grayscale()
+      .resize({ width, kernel: "cubic" })
+      .normalise();
+  const pad = { top: 10, bottom: 10, left: 10, right: 10, background: "#ffffff" };
+
+  const variants = [];
+  for (const t of THRESHOLDS) {
+    variants.push(await base().median(3).threshold(t).extend(pad).png().toBuffer());
+  }
+  variants.push(await base().median(3).sharpen().extend(pad).png().toBuffer());
+  variants.push(await base().blur(0.8).threshold(150).extend(pad).png().toBuffer());
+  return variants;
+}
+
+async function runOcr(captchaDataUrl) {
+  const buffer = Buffer.from(captchaDataUrl.split(",").pop(), "base64");
+  const variants = await buildVariants(buffer);
+  const worker = await getWorker();
+
+  const reads = [];
+  for (const img of variants) {
+    const { data } = await worker.recognize(img);
+    const text = (data.text || "").replace(/[^A-Za-z0-9]/g, "");
+    if (!text) continue;
+    if (CAPTCHA_LEN && text.length !== CAPTCHA_LEN) continue;
+    reads.push({ text, confidence: data.confidence || 0 });
+  }
+  if (!reads.length) return { ok: false, text: "", confidence: 0, agreement: 0 };
+
+  const votes = new Map();
+  for (const r of reads) votes.set(r.text, (votes.get(r.text) || 0) + 1);
+  const [text, count] = [...votes.entries()].sort((a, b) => b[1] - a[1])[0];
+  const confidence = Math.max(...reads.filter((r) => r.text === text).map((r) => r.confidence));
+  const agreement = count / variants.length;
+  return { ok: agreement >= MIN_AGREEMENT && confidence >= MIN_CONFIDENCE, text, confidence, agreement };
+}
+
+function solveCaptcha(captchaDataUrl) {
+  // tesseract worker handles one job at a time, so serialize
+  const job = ocrQueue.then(() => runOcr(captchaDataUrl));
+  ocrQueue = job.catch(() => {});
+  return job;
+}
+
+/* ---------------- Existing logic ---------------- */
 
 function isAllowedDigialmUrl(value) {
   let url;
@@ -165,6 +244,33 @@ async function fetchAuthenticatedDigialmHtml({ username, password, captcha, capt
   }));
 }
 
+/* ---------------- Auto captcha flow ---------------- */
+
+async function fetchWithAutoCaptcha({ username, password }) {
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_CAPTCHA_ATTEMPTS; attempt++) {
+    const { captchaId, captcha, cookie } = await generateCaptcha();
+    const solved = await solveCaptcha(captcha);
+    console.log(`attempt ${attempt}: read="${solved.text}" conf=${solved.confidence.toFixed(0)} agree=${solved.agreement.toFixed(2)} ok=${solved.ok}`);
+    if (!solved.ok) {
+      lastError = new Error("Low-confidence captcha read.");
+      continue;
+    }
+    try {
+      return await fetchAuthenticatedDigialmHtml({
+        username, password, captcha: solved.text, captchaId, cookie
+      });
+    } catch (error) {
+      console.log("auth error:", error.message);
+      lastError = error;
+      if (!/captcha|HTTP 4\d\d/i.test(error.message || "")) throw error;
+    }
+  }
+  throw lastError || new Error("Captcha could not be solved.");
+}
+
+/* ---------------- HTTP server ---------------- */
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(payload));
@@ -172,11 +278,21 @@ function sendJson(response, statusCode, payload) {
 
 async function requestHandler(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+
   if (request.method === "GET" && requestUrl.pathname === "/api/captcha") {
     try {
       return sendJson(response, 200, await generateCaptcha());
     } catch (error) {
       return sendJson(response, 502, { error: error.message || "Could not generate the CAPTCHA." });
+    }
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/api/digialm-result-auto") {
+    try {
+      const papers = await fetchWithAutoCaptcha(await readJsonBody(request));
+      return sendJson(response, 200, { papers });
+    } catch (error) {
+      return sendJson(response, 502, { error: error.message || "Auto login failed." });
     }
   }
 
@@ -230,9 +346,11 @@ async function readJsonBody(request) {
 }
 
 if (require.main === module) {
-  http.createServer(requestHandler).listen(PORT, () => {
-    console.log(`Digialm Score Calculator running at http://localhost:${PORT}`);
+  getWorker().then(() => {
+    http.createServer(requestHandler).listen(PORT, () => {
+      console.log(`Digialm Score Calculator running at http://localhost:${PORT}`);
+    });
   });
 }
 
-module.exports = { isAllowedDigialmUrl, fetchDigialmHtml, extractToken, extractAnswerSheetUrl, extractAnswerSheetRecords, requestHandler };
+module.exports = { isAllowedDigialmUrl, fetchDigialmHtml, extractToken, extractAnswerSheetUrl, extractAnswerSheetRecords, requestHandler, solveCaptcha };
