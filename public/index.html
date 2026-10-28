@@ -1,0 +1,74 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AP DSC TET Score Analyzer</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/script.js" defer></script>
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <span class="eyebrow">AP DSC · TET</span>
+      <h1>Score Analyzer</h1>
+      <p>This app is mainly to help teachers and open sourced</p>
+      <p>Sign in to view your response sheets and question-wise analysis.</p>
+    </header>
+
+    <section class="card">
+      <h2>Candidate Login</h2>
+      <p class="muted">Enter your portal credentials below.</p>
+
+      <form id="loginForm">
+        <label for="username">Username / Candidate ID</label>
+        <input
+          type="text"
+          id="username"
+          name="username"
+          placeholder="Enter your username"
+          autocomplete="username"
+          required
+        />
+
+        <label for="password">Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          placeholder="Enter your password"
+          autocomplete="current-password"
+          required
+        />
+
+        <button type="submit" id="submitBtn">Analyze My Score</button>
+      </form>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <p class="security-note">
+        Your credentials are submitted to this server for authentication.
+        Only use a server you trust.
+      </p>
+    </section>
+
+    <section id="results" hidden>
+      <div class="results-header">
+        <div>
+          <span class="eyebrow">ANALYSIS</span>
+          <h2>Your Results</h2>
+        </div>
+        <button type="button" id="clearBtn" class="secondary">
+          Clear Results
+        </button>
+      </div>
+
+      <div id="examResults"></div>
+    </section>
+
+    <footer>
+      <p>AP DSC TET Response Sheet Analyzer &nbsp;  <a href="https://github.com/mikeyy143/tempTeachers.git">GitHub repo</a></p>
+    </footer>
+  </main>
+</body>
+</html>
